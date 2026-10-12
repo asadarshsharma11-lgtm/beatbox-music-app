@@ -1,0 +1,48 @@
+<!DOCTYPE html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#12091c">
+<link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon.svg"><title>BeatBox</title>
+<style>body{margin:0;font:16px system-ui;background:#12091c;color:#f6eefc;padding:16px 16px 190px}h1{font:900 26px Arial Black,sans-serif;margin:0}
+input,button{font:inherit;padding:12px;border-radius:12px;border:0;margin:4px 0;width:100%}button{background:#ff4d6d;color:#fff;font-weight:700;cursor:pointer}
+.r{display:flex;gap:8px;align-items:center;background:#21123a;border-radius:14px;padding:10px;margin:8px 0}.r b{flex:1;min-width:0}.r button{width:auto}
+#bar{position:fixed;left:0;right:0;bottom:0;background:#21123a;padding:12px 12px calc(12px + env(safe-area-inset-bottom,0px))}.hide{display:none}.m{color:#a592bb;font-size:14px}
+.eq{display:flex;gap:10px;align-items:center}.eq input{padding:0;margin:0}.eq span{white-space:nowrap;font-size:13px}.cur{outline:2px solid #ff4d6d}</style></head><body>
+<h1>BeatBox</h1><p class="m" id="who"></p>
+<div id="auth"><input id="e" type="email" placeholder="Email"><input id="p" type="password" placeholder="Password"><button onclick="go('login')">Login</button><button onclick="go('signup')" style="background:#21123a">Naya account</button></div>
+<div id="app" class="hide"><button id="buy" onclick="buy()">Premium lo ₹59 / saal</button>
+<div id="adm" class="hide"><p class="m">Upload (sirf wo gaane jinka tumhare paas haq ho)</p><input id="t" placeholder="Title"><input id="a" placeholder="Artist"><input id="f" type="file" accept="audio/mpeg"><label class="m"><input id="rt" type="checkbox" style="width:auto"> Mere paas is gaane ka haq/permission hai</label><button onclick="upl()">Upload</button></div>
+<div id="list"></div><button onclick="out()" style="background:#21123a;margin-top:20px">Logout</button></div>
+<div id="bar"><div id="np" class="m">Koi gaana nahi</div><audio id="au" controls style="width:100%"></audio>
+<div class="eq"><span>Bass <b id="bv">0</b>dB</span><input id="bs" type="range" min="0" max="15" value="0"><span>Treble <b id="tv">0</b></span><input id="tr" type="range" min="-6" max="8" value="0"></div></div>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>let T=localStorage.bbt||'',U=null,S=[],cx,bf,tf;const $=i=>document.getElementById(i),au=$('au');
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+const api=async(u,o={})=>{o.headers={...(o.headers||{}),Authorization:'Bearer '+T};if(o.body&&!(o.body instanceof FormData)){o.headers['Content-Type']='application/json';o.body=JSON.stringify(o.body)}
+ const r=await fetch(u,o);const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Error');return j};
+const esc=s=>String(s).replace(/[<>&"']/g,c=>'&#'+c.charCodeAt(0)+';');
+async function go(k){try{const j=await api('/api/'+k,{method:'POST',body:{email:$('e').value,password:$('p').value}});T=j.token;localStorage.bbt=T;init()}catch(e){alert(e.message)}}
+function out(){localStorage.removeItem('bbt');location.reload()}
+async function init(){try{U=await api('/api/me')}catch(e){return}$('auth').classList.add('hide');$('app').classList.remove('hide');
+ $('who').textContent=U.email+' · '+(U.premium?'Premium':'Free');$('buy').classList.toggle('hide',U.premium);$('adm').classList.toggle('hide',!U.admin);load()}
+async function load(){S=await api('/api/songs');$('list').innerHTML=S.length?S.map((x,i)=>`<div class="r" id="r${i}"><b>${esc(x.title)}<br><span class="m">${esc(x.artist)}</span></b><button onclick="play(${i})">▶</button><button onclick="dl(${i})" style="background:#ffb703;color:#222">⬇</button></div>`).join(''):'<p class="m">Abhi koi gaana nahi hai.</p>'}
+let ci=-1;function play(i){setup();if(cx.state==='suspended')cx.resume();ci=i;au.src='/api/stream/'+S[i].id+'?t='+T;au.play();$('np').textContent=S[i].title;
+ document.querySelectorAll('.r').forEach((e,j)=>e.classList.toggle('cur',j===i));
+ if('mediaSession' in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:S[i].title,artist:S[i].artist||'BeatBox'})}
+au.onended=()=>{if(S.length)play((ci+1)%S.length)};
+if('mediaSession' in navigator){navigator.mediaSession.setActionHandler('nexttrack',()=>S.length&&play((ci+1)%S.length));navigator.mediaSession.setActionHandler('previoustrack',()=>S.length&&play((ci-1+S.length)%S.length))}
+function setup(){if(cx)return;cx=new (window.AudioContext||window.webkitAudioContext)();const s=cx.createMediaElementSource(au);
+ bf=cx.createBiquadFilter();bf.type='lowshelf';bf.frequency.value=90;tf=cx.createBiquadFilter();tf.type='highshelf';tf.frequency.value=8000;
+ const c=cx.createDynamicsCompressor();c.threshold.value=-8;c.ratio.value=3;s.connect(bf);bf.connect(tf);tf.connect(c);c.connect(cx.destination);eq()}
+function eq(){if(!cx)return;bf.gain.value=+$('bs').value;tf.gain.value=+$('tr').value;$('bv').textContent=$('bs').value;$('tv').textContent=$('tr').value}
+$('bs').oninput=()=>{if(!(U&&U.premium)&&+$('bs').value>6){$('bs').value=6;alert('Bass 6 dB se upar Premium me hai')}eq()};$('tr').oninput=eq;
+function dl(i){if(!U.premium)return alert('Download sirf Premium me hai');location='/api/download/'+S[i].id+'?t='+T}
+async function buy(){try{
+  const res = await api('/api/pay/order',{method:'POST'});
+  // fallback link (when server returns link)
+  if(res.link){ window.location = res.link; return; }
+  // Razorpay order flow
+  const { order, key, email } = res;
+  new Razorpay({key,order_id:order.id,amount:order.amount,currency:'INR',name:'BeatBox Premium',prefill:{email},
+    handler:async r=>{try{await api('/api/pay/verify',{method:'POST',body:r});init()}catch(e){alert(e.message)}}}).open();
+}catch(e){alert(e.message)}}
+async function upl(){const f=new FormData();f.append('title',$('t').value);f.append('artist',$('a').value);f.append('rights',$('rt').checked?'yes':'no');f.append('file',$('f').files[0]);
+ try{await api('/api/songs',{method:'POST',body:f});load()}catch(e){alert(e.message)}}
+if(T)init();</script></body></html>
